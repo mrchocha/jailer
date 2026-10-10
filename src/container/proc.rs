@@ -1,8 +1,26 @@
+use std::fmt;
+
 use nix::libc::sleep;
 use nix::sched::CloneFlags;
 use nix::sched::clone;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
+
+pub enum ConntainerProcessStatus {
+    Running,
+    Paused,
+    Stopped,
+}
+
+impl fmt::Display for ConntainerProcessStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConntainerProcessStatus::Running => write!(f, "RUNNING"),
+            ConntainerProcessStatus::Stopped => write!(f, "STOPED"),
+            ConntainerProcessStatus::Paused => write!(f, "PAUSE"),
+        }
+    }
+}
 
 pub struct ConntainerProcess {
     pub pid: Pid,

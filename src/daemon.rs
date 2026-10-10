@@ -53,6 +53,7 @@ impl Daemon {
 
         let (response, should_stop) = self.handle_command(&command, &mut stream);
 
+        let response = format!("{response}\n<END>\n");
         if let Err(error) = stream.write_all(response.as_bytes()) {
             eprintln!("Failed to write response: {error}");
         }
@@ -60,32 +61,35 @@ impl Daemon {
         should_stop
     }
 
-    fn handle_command(
-        &mut self,
-        command: &Commands,
-        _stream: &mut UnixStream,
-    ) -> (&'static str, bool) {
+    fn handle_command(&mut self, command: &Commands, _stream: &mut UnixStream) -> (String, bool) {
         match command {
-            Commands::Ping => ("pong\n", false),
-            Commands::Status => ("runtime is running\n", false),
-            Commands::Shutdown => ("daemon stopping\n", true),
-            Commands::Stop { .. } => ("container stopping\n", false),
+            Commands::Ping => ("pong\n".to_string(), false),
+            Commands::Status => ("runtime is running\n".to_string(), false),
+            Commands::Shutdown => ("daemon stopping\n".to_string(), true),
             Commands::Create { image, .. } => {
                 if self.container_manager.create(image.clone()).is_err() {
-                    return ("container creation error\n", false);
+                    return ("container creation error\n".to_string(), false);
                 }
 
-                ("container created\n", false)
+                ("container created\n".to_string(), false)
             }
-
-            Commands::PS => {
-                if self.container_manager.ps().is_err() {
-                    return ("container ps error\n", false);
+            Commands::Stop { container_id } => {
+                if self.container_manager.stop(container_id.clone()).is_err() {
+                    return ("container stoping error\n".to_string(), false);
                 }
-
-                ("\n", false)
+                ("container stopping\n".to_string(), false)
             }
-            _ => ("unsupported command\n", false),
+            Commands::Pause { container_id } => {
+                if self.container_manager.pause(container_id.clone()).is_err() {
+                    return ("container pausing error\n".to_string(), false);
+                }
+                ("container paused\n".to_string(), false)
+            }
+            Commands::PS => match self.container_manager.ps() {
+                Ok(resp) => (resp, false),
+                Err(_) => ("container ps error\n".to_string(), false),
+            },
+            _ => ("unsupported command\n".to_string(), false),
         }
     }
 }

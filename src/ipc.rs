@@ -59,8 +59,22 @@ impl IpcClient {
 
         writeln!(stream, "{request}")?;
 
+        let mut reader = BufReader::new(stream);
         let mut response = String::new();
-        BufReader::new(stream).read_line(&mut response)?;
+        let mut line = String::new();
+
+        loop {
+            line.clear();
+            if reader.read_line(&mut line)? == 0 {
+                break; // Connection closed
+            }
+
+            if line.trim_end() == "<END>" {
+                break;
+            }
+
+            response.push_str(&line);
+        }
         Ok(response)
     }
 }

@@ -72,7 +72,7 @@ myruntime/
 
 ```
 docker run -it \
-  --privileged
+  --privileged \
   --name ubuntu-lab \
   --mount type=bind,source=/Users/rahulchocha/Documents/Rahul/container-runtime,target=/workspace \
   -w /workspace \

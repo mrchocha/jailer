@@ -8,28 +8,28 @@ use crate::{
 pub fn ping() -> io::Result<()> {
     let ipc = IpcClient::new(IPC_SOCK_PATH);
     let resp = ipc.send_request(&Commands::Ping)?;
-    println!("{:?}", resp);
+    println!("{}", resp);
     Ok(())
 }
 
 pub fn shutdown() -> io::Result<()> {
     let ipc = IpcClient::new(IPC_SOCK_PATH);
     let resp = ipc.send_request(&Commands::Shutdown)?;
-    println!("{:?}", resp);
+    println!("{}", resp);
     Ok(())
 }
 
 pub fn status() -> io::Result<()> {
     let ipc = IpcClient::new(IPC_SOCK_PATH);
     let resp = ipc.send_request(&Commands::Status)?;
-    println!("{:?}", resp);
+    println!("{}", resp);
     Ok(())
 }
 
 pub fn ps() -> io::Result<()> {
     let ipc = IpcClient::new(IPC_SOCK_PATH);
     let resp = ipc.send_request(&Commands::PS)?;
-    println!("{:?}", resp);
+    println!("{}", resp);
     Ok(())
 }
 
@@ -38,7 +38,16 @@ pub fn stop(container_id: &str) -> io::Result<()> {
     let resp = ipc.send_request(&Commands::Stop {
         container_id: container_id.to_owned(),
     })?;
-    println!("{:?}", resp);
+    println!("{}", resp);
+    Ok(())
+}
+
+pub fn pause(container_id: &str) -> io::Result<()> {
+    let ipc = IpcClient::new(IPC_SOCK_PATH);
+    let resp = ipc.send_request(&Commands::Pause {
+        container_id: container_id.to_owned(),
+    })?;
+    println!("{}", resp);
     Ok(())
 }
 
@@ -49,6 +58,6 @@ pub fn create(image: &str) -> io::Result<()> {
         name: None,
         memory: None,
     })?;
-    println!("{:?}", resp);
+    println!("{}", resp);
     Ok(())
 }

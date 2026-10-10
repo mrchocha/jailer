@@ -30,6 +30,9 @@ pub enum Commands {
     /// Stop a container
     Stop { container_id: String },
 
+    /// Pause a container
+    Pause { container_id: String },
+
     /// list running container
     PS,
 
@@ -52,6 +55,9 @@ impl fmt::Display for Commands {
             Commands::Status => write!(f, "status"),
             Commands::Stop { container_id } => {
                 write!(f, "stop {container_id}")
+            }
+            Commands::Pause { container_id } => {
+                write!(f, "pause {container_id}")
             }
             Commands::Create { image, .. } => {
                 write!(f, "create {image}")
@@ -79,6 +85,14 @@ impl TryFrom<&str> for Commands {
                 let container_id = parts.next().ok_or("Missing container ID")?;
 
                 Ok(Commands::Stop {
+                    container_id: container_id.to_string(),
+                })
+            }
+
+            "PAUSE" => {
+                let container_id = parts.next().ok_or("Missing container ID")?;
+
+                Ok(Commands::Pause {
                     container_id: container_id.to_string(),
                 })
             }
