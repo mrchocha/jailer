@@ -98,3 +98,21 @@ sudo iptables -A FORWARD \
   -i enp0s1 -o jailer0 -d 10.10.0.0/24 \
   -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 ```
+
+
+````
+sudo ip link add veth-host type veth peer name veth-container
+
+sudo ip link set veth-container netns 53007
+
+// in child
+ip link set veth-container name eth0
+ip link set lo up
+ip link set eth0 up
+ip addr add 10.10.0.2/24 dev eth0
+ip route add default via 10.10.0.1
+
+// in host
+sudo ip link set veth-host master jailer0
+sudo ip link set veth-host up
+````
