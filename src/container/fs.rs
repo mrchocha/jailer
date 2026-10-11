@@ -5,6 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[derive(Clone)]
 pub struct ContainerProcessFileSystem {
     cid: String,
 }
@@ -135,6 +136,18 @@ impl ContainerProcessFileSystem {
         Ok(())
     }
 
+    fn copy_required_binaries(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let rootfs = PathBuf::from(self.get_root_fs_path());
+        fs::create_dir_all(rootfs.join("usr/bin"))?;
+
+        for name in ["bash", "ls", "pwd", "ping", "cat"] {
+            let binary = self.find_binary(name)?;
+            self.copy_binary(&binary, &rootfs)?;
+        }
+
+        Ok(())
+    }
+
     fn setup_rootfs(&self) -> Result<(), Box<dyn std::error::Error>> {
         let rootfs = self.get_root_fs_path();
 
@@ -187,17 +200,16 @@ impl ContainerProcessFileSystem {
         Ok(())
     }
 
+    pub fn cleanup(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let rootfs = self.get_root_fs_path();
+        std::fs::remove_dir_all(rootfs)?;
+
+        Ok(())
+    }
+
     pub fn isolate(&self) -> Result<(), Box<dyn std::error::Error>> {
         self.create_process_root_fs_dir()?;
-
-        let rootfs = PathBuf::from(self.get_root_fs_path());
-        fs::create_dir_all(rootfs.join("usr/bin"))?;
-
-        for name in ["bash", "ls", "pwd", "ping"] {
-            let binary = self.find_binary(name)?;
-            self.copy_binary(&binary, &rootfs)?;
-        }
-
+        self.copy_required_binaries()?;
         self.setup_mount_namespace()?;
         self.setup_rootfs()?;
         Ok(())

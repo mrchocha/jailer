@@ -28,6 +28,7 @@ impl fmt::Display for ConntainerProcessStatus {
 pub struct ConntainerProcess {
     pub pid: Pid,
     pub cg: ContainerProcessCgroups,
+    pub fs: ContainerProcessFileSystem,
 }
 
 impl ConntainerProcess {
@@ -41,17 +42,21 @@ impl ConntainerProcess {
             | CloneFlags::CLONE_NEWUTS;
 
         let child_cid = cid.clone();
+        let fs = ContainerProcessFileSystem::new(child_cid);
+
+        let child_fs = fs.clone();
         let child = unsafe {
             clone(
                 Box::new(move || -> isize {
                     println!("PID inside namespace: {}", nix::unistd::getpid());
-                    let fs = ContainerProcessFileSystem::new(child_cid.clone());
-                    fs.isolate().expect("error while creating isloated fs");
+                    child_fs
+                        .isolate()
+                        .expect("error while creating isloated fs");
 
                     let shell = CString::new("/usr/bin/bash").unwrap();
                     let arg0 = CString::new("bash").unwrap();
                     let option = CString::new("-c").unwrap();
-                    let command = CString::new("ping 0.0.0.0").unwrap();
+                    let command = CString::new("cat /proc/self/stat").unwrap();
 
                     let path = CString::new("PATH=/usr/bin:/bin:/usr/sbin:/sbin").unwrap();
                     let home = CString::new("HOME=/root").unwrap();
@@ -78,13 +83,14 @@ impl ConntainerProcess {
         println!("Container child PID: {child}");
 
         let cg = ContainerProcessCgroups::new(child)?;
-        let child_process = Self { pid: child, cg };
+        let child_process = Self { pid: child, cg, fs };
 
         Ok(child_process)
     }
 
     pub fn cleanup(&self) -> Result<(), Box<dyn std::error::Error>> {
         self.cg.cleanup_cgroup()?;
+        self.fs.cleanup()?;
 
         Ok(())
     }
