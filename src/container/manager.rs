@@ -1,3 +1,4 @@
+use nanoid::nanoid;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::thread;
@@ -9,6 +10,7 @@ struct ConntainerProcessInfo {
     process: ConntainerProcess,
     status: ConntainerProcessStatus,
     name: String,
+    id: String,
 }
 
 pub struct ContainerManager {
@@ -24,8 +26,9 @@ impl ContainerManager {
 
     pub fn create(&mut self, name: String) -> Result<(), Box<dyn std::error::Error>> {
         let id_map_clone = Arc::clone(&self.id_map);
+        let cid = nanoid!(6);
 
-        let handler = thread::spawn(move || match ConntainerProcess::new(name.clone()) {
+        let handler = thread::spawn(move || match ConntainerProcess::new(cid.clone()) {
             Ok(process) => {
                 if let Ok(mut id_map) = id_map_clone.write() {
                     id_map.insert(
@@ -34,6 +37,7 @@ impl ContainerManager {
                             process,
                             status: ConntainerProcessStatus::Running,
                             name,
+                            id: cid,
                         },
                     );
                 }
@@ -55,10 +59,10 @@ impl ContainerManager {
             "CONTAINER ID", "PID", "NAME", "STATUS"
         ));
 
-        for (pid, container) in id_map.iter() {
+        for (name, container) in id_map.iter() {
             output.push_str(&format!(
                 "{:<15} {:<8} {:<20} {:<10}\n",
-                pid, container.process.pid, container.name, container.status
+                container.id, container.process.pid, name, container.status
             ));
         }
 

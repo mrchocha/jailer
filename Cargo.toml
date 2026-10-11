@@ -14,3 +14,4 @@ nix = { version = "0.29", features = [
 ] }
 clap = { version = "4.6.7", features = ["derive"] }
 cgroups-rs = "0.5.1"
+nanoid = "0.4.0"

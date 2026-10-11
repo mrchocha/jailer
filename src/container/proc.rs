@@ -1,16 +1,13 @@
-use cgroups_rs::fs::Cgroup;
-use cgroups_rs::fs::cgroup_builder::CgroupBuilder;
-use nix::mount::{MntFlags, MsFlags, mount, umount2};
 use nix::sched::CloneFlags;
 use nix::sched::clone;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
-use nix::unistd::chdir;
-use nix::unistd::execv;
+use nix::unistd::execve;
 use std::ffi::CString;
 use std::fmt;
 
 use crate::container::cgroup::ContainerProcessCgroups;
+use crate::container::fs::ContainerProcessFileSystem;
 
 pub enum ConntainerProcessStatus {
     Running,
@@ -34,63 +31,7 @@ pub struct ConntainerProcess {
 }
 
 impl ConntainerProcess {
-    fn setup_rootfs(rootfs: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let root = CString::new(rootfs)?;
-
-        // 1. Stop mount events propagating to the host.
-        mount(
-            None::<&str>,
-            "/",
-            None::<&str>,
-            MsFlags::MS_REC | MsFlags::MS_PRIVATE,
-            None::<&str>,
-        )?;
-
-        // 2. Make rootfs a mount point.
-        mount(
-            Some(rootfs),
-            rootfs,
-            None::<&str>,
-            MsFlags::MS_BIND | MsFlags::MS_REC,
-            None::<&str>,
-        )?;
-
-        // 3. Create the directory for the old root.
-        let oldroot = format!("{rootfs}/oldroot");
-        std::fs::create_dir_all(&oldroot)?;
-
-        let oldroot_c = CString::new(oldroot)?;
-
-        // 4. Switch the process root.
-        let result = unsafe {
-            nix::libc::syscall(nix::libc::SYS_pivot_root, root.as_ptr(), oldroot_c.as_ptr())
-        };
-
-        if result != 0 {
-            return Err(std::io::Error::last_os_error().into());
-        }
-
-        // 5. Work from the new root.
-        chdir("/")?;
-
-        // 6. Detach the old root.
-        umount2("/oldroot", MntFlags::MNT_DETACH)?;
-        std::fs::remove_dir("/oldroot")?;
-
-        // 7. Mount proc for process information.
-        std::fs::create_dir_all("/proc")?;
-        mount(
-            Some("proc"),
-            "/proc",
-            Some("proc"),
-            MsFlags::empty(),
-            None::<&str>,
-        )?;
-
-        Ok(())
-    }
-
-    pub fn new(name: String) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(cid: String) -> Result<Self, Box<dyn std::error::Error>> {
         // clone() needs a stack for the child.
         let mut stack = vec![0u8; 1024 * 1024];
 
@@ -99,21 +40,26 @@ impl ConntainerProcess {
             | CloneFlags::CLONE_NEWNS
             | CloneFlags::CLONE_NEWUTS;
 
-        let child_name = name.clone();
-
+        let child_cid = cid.clone();
         let child = unsafe {
             clone(
                 Box::new(move || -> isize {
-                    println!("Container: {child_name}");
                     println!("PID inside namespace: {}", nix::unistd::getpid());
+                    let fs = ContainerProcessFileSystem::new(child_cid.clone());
+                    fs.isolate().expect("error while creating isloated fs");
 
-                    let shell = CString::new("/bin/bash").unwrap();
+                    let shell = CString::new("/usr/bin/bash").unwrap();
                     let arg0 = CString::new("bash").unwrap();
                     let option = CString::new("-c").unwrap();
-                    let command = CString::new("sleep 60").unwrap();
+                    let command = CString::new("ping 0.0.0.0").unwrap();
+
+                    let path = CString::new("PATH=/usr/bin:/bin:/usr/sbin:/sbin").unwrap();
+                    let home = CString::new("HOME=/root").unwrap();
+                    let env = [path, home];
+
                     let args = [arg0, option, command];
 
-                    match execv(&shell, &args) {
+                    match execve(&shell, &args, &env) {
                         Ok(_) => unreachable!(),
                         Err(err) => {
                             eprintln!("Failed to start bash: {err}");
