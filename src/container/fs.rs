@@ -140,7 +140,7 @@ impl ContainerProcessFileSystem {
         let rootfs = PathBuf::from(self.get_root_fs_path());
         fs::create_dir_all(rootfs.join("usr/bin"))?;
 
-        for name in ["bash", "ls", "pwd", "ping", "cat"] {
+        for name in ["bash", "ls", "pwd", "ping", "cat", "ip"] {
             let binary = self.find_binary(name)?;
             self.copy_binary(&binary, &rootfs)?;
         }

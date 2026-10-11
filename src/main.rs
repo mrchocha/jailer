@@ -6,11 +6,12 @@ mod container;
 mod daemon;
 mod ipc;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = command::Cli::try_parse()?;
 
     match cli.command {
-        Commands::Daemon => daemon::start()?,
+        Commands::Daemon => daemon::start().await?,
         Commands::Shutdown => cli::shutdown()?,
         Commands::Ping => cli::ping()?,
         Commands::Status => cli::status()?,

@@ -1,5 +1,5 @@
 mod cgroup;
 mod fs;
 pub mod manager;
-mod network;
+pub mod network;
 mod proc;

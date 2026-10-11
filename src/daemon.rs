@@ -1,13 +1,20 @@
+use crate::{command::Commands, container, ipc};
+use container::manager::ContainerManager;
+use container::network::DaemonBridge;
+use rtnetlink::new_connection;
 use std::{
     io::{self, BufRead, BufReader, Write},
     os::unix::net::UnixStream,
 };
 
-use crate::{command::Commands, container, ipc};
-use container::manager::ContainerManager;
-
-pub fn start() -> io::Result<()> {
+pub async fn start() -> Result<(), Box<dyn std::error::Error>> {
     let server = ipc::IpcServer::new(ipc::IPC_SOCK_PATH)?;
+
+    let (connection, handle, _) = new_connection()?;
+    tokio::spawn(connection);
+    // create bridge
+    DaemonBridge::create_if_not_exists(&handle).await?;
+
     let mut deamon = Daemon::new();
 
     for connection in server.accept_incoming() {

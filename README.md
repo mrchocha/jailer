@@ -80,3 +80,13 @@ docker run -it \
   -w /workspace \
   ubuntu:latest bash
 ```
+
+
+```
+echo 'net.ipv4.ip_forward=1' | sudo tee /etc/sysctl.d/99-jailer.conf
+
+ip route get 1.1.1.1 
+
+sudo iptables -t nat -A POSTROUTING \
+  -s 10.10.0.0/24 -o enp0s1 -j MASQUERADE
+```

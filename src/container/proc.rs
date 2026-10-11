@@ -56,7 +56,7 @@ impl ConntainerProcess {
                     let shell = CString::new("/usr/bin/bash").unwrap();
                     let arg0 = CString::new("bash").unwrap();
                     let option = CString::new("-c").unwrap();
-                    let command = CString::new("cat /proc/self/stat").unwrap();
+                    let command = CString::new("ip addr").unwrap();
 
                     let path = CString::new("PATH=/usr/bin:/bin:/usr/sbin:/sbin").unwrap();
                     let home = CString::new("HOME=/root").unwrap();
