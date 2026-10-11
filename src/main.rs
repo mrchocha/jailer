@@ -21,11 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Pause { container_id } => {
             cli::pause(&container_id)?;
         }
-        Commands::Create {
-            image,
-            name,
-            memory,
-        } => cli::create(&image)?,
+        Commands::Create { image, .. } => cli::create(&image)?,
     }
 
     Ok(())

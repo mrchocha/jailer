@@ -70,6 +70,7 @@ impl ContainerManager {
             let container = id_map.get_mut(&container_id).ok_or("Container not found")?;
 
             container.status = ConntainerProcessStatus::Stopped;
+            println!("Killing {}", container.process.pid);
             kill(container.process.pid, Signal::SIGKILL)?;
 
             container.process.pid
