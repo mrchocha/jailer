@@ -20,7 +20,7 @@ pub async fn start() -> Result<(), Box<dyn std::error::Error>> {
     for connection in server.accept_incoming() {
         let stream = connection?;
 
-        if deamon.handle_connection(stream) {
+        if deamon.handle_connection(stream).await {
             break;
         }
     }
@@ -39,7 +39,7 @@ impl Daemon {
         }
     }
 
-    pub fn handle_connection(&mut self, mut stream: UnixStream) -> bool {
+    pub async fn handle_connection(&mut self, mut stream: UnixStream) -> bool {
         let mut request = String::new();
 
         {
@@ -58,7 +58,7 @@ impl Daemon {
             }
         };
 
-        let (response, should_stop) = self.handle_command(&command, &mut stream);
+        let (response, should_stop) = self.handle_command(&command, &mut stream).await;
 
         let response = format!("{response}\n<END>\n");
         if let Err(error) = stream.write_all(response.as_bytes()) {
@@ -68,13 +68,17 @@ impl Daemon {
         should_stop
     }
 
-    fn handle_command(&mut self, command: &Commands, _stream: &mut UnixStream) -> (String, bool) {
+    async fn handle_command(
+        &mut self,
+        command: &Commands,
+        _stream: &mut UnixStream,
+    ) -> (String, bool) {
         match command {
             Commands::Ping => ("pong\n".to_string(), false),
             Commands::Status => ("runtime is running\n".to_string(), false),
             Commands::Shutdown => ("daemon stopping\n".to_string(), true),
             Commands::Create { image, .. } => {
-                if self.container_manager.create(image.clone()).is_err() {
+                if self.container_manager.create(image.clone()).await.is_err() {
                     return ("container creation error\n".to_string(), false);
                 }
 

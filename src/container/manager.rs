@@ -2,6 +2,7 @@ use nanoid::nanoid;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::thread;
+use tokio::runtime::Handle;
 
 use crate::container::proc::{ConntainerProcess, ConntainerProcessStatus};
 use nix::sys::signal::{Signal, kill};
@@ -24,28 +25,34 @@ impl ContainerManager {
         }
     }
 
-    pub fn create(&mut self, name: String) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn create(&mut self, name: String) -> Result<(), Box<dyn std::error::Error>> {
         let id_map_clone = Arc::clone(&self.id_map);
         let cid = nanoid!(6);
 
-        let handler = thread::spawn(move || match ConntainerProcess::new(cid.clone()) {
-            Ok(process) => {
-                if let Ok(mut id_map) = id_map_clone.write() {
-                    id_map.insert(
-                        name.clone(),
-                        ConntainerProcessInfo {
-                            process,
-                            status: ConntainerProcessStatus::Running,
-                            name,
-                            id: cid,
-                        },
-                    );
+        let handle = Handle::current();
+        let join_handle = tokio::task::spawn_blocking(move || {
+            match handle.block_on(ConntainerProcess::new(cid.clone())) {
+                Ok(process) => {
+                    if let Ok(mut id_map) = id_map_clone.write() {
+                        id_map.insert(
+                            name.clone(),
+                            ConntainerProcessInfo {
+                                process,
+                                status: ConntainerProcessStatus::Running,
+                                name,
+                                id: cid,
+                            },
+                        );
+                    }
+                }
+                Err(err) => {
+                    eprintln!("Container creation failed: {err}");
+                    eprintln!("Debug details: {err:?}");
                 }
             }
-            Err(err) => eprintln!("Container creation failed: {err:?}"),
         });
 
-        handler.join().expect("Error on join");
+        join_handle.await.expect("Error on join");
 
         Ok(())
     }

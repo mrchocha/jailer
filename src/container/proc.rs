@@ -1,13 +1,17 @@
+use crate::container::cgroup::ContainerProcessCgroups;
+use crate::container::fs::ContainerProcessFileSystem;
+use crate::container::network::ContainerNetwork;
 use nix::sched::CloneFlags;
 use nix::sched::clone;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
 use nix::unistd::execve;
+use rtnetlink::new_connection;
 use std::ffi::CString;
 use std::fmt;
-
-use crate::container::cgroup::ContainerProcessCgroups;
-use crate::container::fs::ContainerProcessFileSystem;
+use std::io::Read;
+use std::io::Write;
+use std::os::unix::net::UnixStream;
 
 pub enum ConntainerProcessStatus {
     Running,
@@ -29,10 +33,11 @@ pub struct ConntainerProcess {
     pub pid: Pid,
     pub cg: ContainerProcessCgroups,
     pub fs: ContainerProcessFileSystem,
+    pub net: ContainerNetwork,
 }
 
 impl ConntainerProcess {
-    pub fn new(cid: String) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn new(cid: String) -> Result<Self, Box<dyn std::error::Error>> {
         // clone() needs a stack for the child.
         let mut stack = vec![0u8; 1024 * 1024];
 
@@ -41,31 +46,44 @@ impl ConntainerProcess {
             | CloneFlags::CLONE_NEWNS
             | CloneFlags::CLONE_NEWUTS;
 
-        let child_cid = cid.clone();
-        let fs = ContainerProcessFileSystem::new(child_cid);
+        let (connection, handle, _) = new_connection()?;
+        tokio::spawn(connection);
 
-        let child_fs = fs.clone();
+        let child_cid = cid.clone();
+
+        let (mut parent_socket, mut child_socket) = UnixStream::pair()?;
+
         let child = unsafe {
             clone(
                 Box::new(move || -> isize {
                     println!("PID inside namespace: {}", nix::unistd::getpid());
-                    child_fs
-                        .isolate()
-                        .expect("error while creating isloated fs");
+                    let mut signal = [0u8; 1];
 
-                    let shell = CString::new("/usr/bin/bash").unwrap();
-                    let arg0 = CString::new("bash").unwrap();
-                    let option = CString::new("-c").unwrap();
-                    let command = CString::new("ip addr").unwrap();
+                    if child_socket.read_exact(&mut signal).is_err() || signal[0] != 1 {
+                        return 1;
+                    }
+
+                    println!("Settingup child process");
 
                     let path = CString::new("PATH=/usr/bin:/bin:/usr/sbin:/sbin").unwrap();
                     let home = CString::new("HOME=/root").unwrap();
-                    let env = [path, home];
+                    let environment = [path, home];
+                    let child = CString::new(child_cid.clone()).unwrap();
 
-                    let args = [arg0, option, command];
+                    let jailer_binary =
+                        CString::new("/home/rahul/jailer/target/debug/jailer").unwrap();
 
-                    match execve(&shell, &args, &env) {
-                        Ok(_) => unreachable!(),
+                    match execve(
+                        &jailer_binary,
+                        &[
+                            jailer_binary.clone(),
+                            CString::new("container-init").unwrap(),
+                            child,
+                            // Additional setup arguments...
+                        ],
+                        &environment,
+                    ) {
+                        Ok(_) => 0,
                         Err(err) => {
                             eprintln!("Failed to start bash: {err}");
                             1
@@ -78,12 +96,25 @@ impl ConntainerProcess {
             )?
         };
 
+        let net = ContainerNetwork::new(cid.clone());
+        let fs = ContainerProcessFileSystem::new(cid.clone());
+
+        net.link_container_wtih_bridge(&handle, child.as_raw() as u32)
+            .await?;
+        net.up_network_host_link(&handle).await?;
+        parent_socket.write_all(&[1])?;
+
         // This runs in the parent process.
         println!("Parent PID: {}", nix::unistd::getpid());
         println!("Container child PID: {child}");
 
         let cg = ContainerProcessCgroups::new(child)?;
-        let child_process = Self { pid: child, cg, fs };
+        let child_process = Self {
+            pid: child,
+            cg,
+            fs,
+            net,
+        };
 
         Ok(child_process)
     }

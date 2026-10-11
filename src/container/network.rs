@@ -6,17 +6,21 @@ use std::net::{IpAddr, Ipv4Addr};
 use futures_lite::stream::StreamExt;
 
 const JAILER_BRIDGE_NAME: &'static str = "jailer0";
-const JAILER_HOST_VETH: &'static str = "jailer-veth-host";
 
-async fn get_link_index(handle: &rtnetlink::Handle, name: &str) -> Result<u32, Box<dyn Error>> {
+async fn get_link_index(handle: &Handle, name: &str) -> Result<u32, Box<dyn std::error::Error>> {
+    eprintln!("get_link_index: looking for {name}");
+
+    eprintln!("get_link_index: before creating link query");
     let mut links = handle.link().get().match_name(name.to_string()).execute();
+
+    eprintln!("get_link_index: before try_next");
     if let Some(msg) = links.try_next().await? {
+        eprintln!("get_link_index: found index {}", msg.header.index);
         Ok(msg.header.index)
     } else {
-        Err(format!("Interface '{}' not found", name).into())
+        Err(format!("Interface '{name}' not found").into())
     }
 }
-
 pub async fn create_veth(
     handle: &Handle,
     host_side: &str,
@@ -28,6 +32,7 @@ pub async fn create_veth(
         .execute()
         .await?;
 
+    println!("veth created {} {}", host_side, peer_side);
     Ok(())
 }
 
@@ -39,9 +44,11 @@ pub async fn up_veth(handle: &Handle, interface_name: &str) -> Result<(), Box<dy
             .execute()
             .await?;
     }
+    println!("veth up {}", interface_name);
     Ok(())
 }
 
+#[derive(Clone)]
 pub struct ContainerNetwork {
     cid: String,
 }
@@ -52,11 +59,11 @@ impl ContainerNetwork {
     }
 
     fn get_container_name(&self) -> String {
-        format!("jc{}", &self.cid[..8])
+        format!("jc{}", &self.cid)
     }
 
     fn get_host_name(&self) -> String {
-        format!("jh{}", &self.cid[..8])
+        format!("jh{}", &self.cid)
     }
 
     async fn move_link_to_namespace(
@@ -77,6 +84,10 @@ impl ContainerNetwork {
             .execute()
             .await?;
 
+        println!(
+            "moved veth to namespace {} {}",
+            interface_name, child_host_pid
+        );
         Ok(())
     }
 
@@ -87,8 +98,10 @@ impl ContainerNetwork {
     ) -> Result<(), Box<dyn Error>> {
         create_veth(handle, &self.get_host_name(), &self.get_container_name()).await?;
 
-        self.move_link_to_namespace(handle, &self.get_container_name(), child_host_pid);
+        self.move_link_to_namespace(handle, &self.get_container_name(), child_host_pid)
+            .await?;
 
+        println!("linked container with bridge {}", child_host_pid);
         Ok(())
     }
 
@@ -109,12 +122,16 @@ impl ContainerNetwork {
 
         up_veth(handle, &self.get_host_name()).await?;
 
+        println!("host link up");
         Ok(())
     }
 
     pub async fn up_contianer_link(&self, handle: &Handle) -> Result<(), Box<dyn Error>> {
+        eprintln!("net: before get_link_index");
         let container_veth_idx = get_link_index(handle, &self.get_container_name()).await?;
+        eprintln!("net: after get_link_index: {container_veth_idx}");
 
+        eprintln!("net: before eth0 rename");
         handle
             .link()
             .set(
@@ -125,6 +142,12 @@ impl ContainerNetwork {
             .execute()
             .await?;
 
+        println!(
+            "net: after renamed container_veth_idx {} to eth0",
+            container_veth_idx
+        );
+
+        eprintln!("net: before lo up");
         handle
             .link()
             .set(
@@ -135,6 +158,9 @@ impl ContainerNetwork {
             .execute()
             .await?;
 
+        println!("net: container lo up");
+
+        eprintln!("net: before eth0 up");
         handle
             .link()
             .set(
@@ -145,7 +171,11 @@ impl ContainerNetwork {
             .execute()
             .await?;
 
+        println!("net: eth0 up");
+
+        println!("net: before find container_eth0_idx");
         let container_eth0_idx = get_link_index(handle, "eth0").await?;
+        println!("net: found container_eth0_idx {}", container_eth0_idx);
 
         //10.10.0.2/24 dev eth0
         // TODO update this to track the Ips
@@ -155,6 +185,8 @@ impl ContainerNetwork {
             .execute()
             .await?;
 
+        println!("assigned up to eth0 {}", container_eth0_idx);
+
         // ip route add default via 10.10.0.1
         let route = RouteMessageBuilder::<Ipv4Addr>::new()
             .destination_prefix(Ipv4Addr::UNSPECIFIED, 0)
@@ -162,6 +194,7 @@ impl ContainerNetwork {
             .build();
         handle.route().add(route).execute().await?;
 
+        println!("container link up");
         Ok(())
     }
 }
@@ -178,13 +211,15 @@ impl DaemonBridge {
         {
             Ok(()) => get_link_index(&handle, JAILER_BRIDGE_NAME).await?,
             Err(rtnetlink::Error::NetlinkError(err))
-                if err.code.is_some_and(|code| code.get() == libc::EEXIST) =>
+                if err.code.is_some_and(|code| code.get() == -libc::EEXIST) =>
             {
                 // EEXIST: the bridge already exists.
                 get_link_index(&handle, JAILER_BRIDGE_NAME).await?
             }
             Err(err) => return Err(err.into()),
         };
+
+        println!("bridge index: {}", br_idx);
 
         // Bring the bridge up.
         handle
@@ -193,14 +228,22 @@ impl DaemonBridge {
             .execute()
             .await?;
 
+        println!("beidge up: {}", br_idx);
+
         // Assign the gateway IP.
         // For full idempotency, check whether this address already exists first.
-        handle
+        match handle
             .address()
             .add(br_idx, Ipv4Addr::new(10, 10, 0, 1).into(), 24)
             .execute()
-            .await?;
-
+            .await
+        {
+            Ok(()) => {}
+            Err(rtnetlink::Error::NetlinkError(err))
+                if err.code.is_some_and(|code| code.get() == -libc::EEXIST) => {} // already configured
+            Err(err) => return Err(err.into()),
+        };
+        println!("address assigned: {}", br_idx);
         Ok(())
     }
 }

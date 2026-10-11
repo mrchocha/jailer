@@ -6,16 +6,23 @@ mod container;
 mod daemon;
 mod ipc;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = command::Cli::try_parse()?;
 
     match cli.command {
-        Commands::Daemon => daemon::start().await?,
+        Commands::Daemon => {
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()?
+                .block_on(daemon::start())?;
+        }
         Commands::Shutdown => cli::shutdown()?,
         Commands::Ping => cli::ping()?,
         Commands::Status => cli::status()?,
         Commands::PS => cli::ps()?,
+        Commands::ContainerInit { cid } => {
+            cli::containerinit(&cid)?;
+        }
         Commands::Stop { name } => {
             cli::stop(&name)?;
         }

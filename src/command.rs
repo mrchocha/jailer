@@ -36,6 +36,9 @@ pub enum Commands {
     /// list running container
     PS,
 
+    /// inint continer
+    ContainerInit { cid: String },
+
     /// Create a container from an image
     Create {
         image: String,
@@ -53,6 +56,9 @@ impl fmt::Display for Commands {
         match self {
             Commands::Ping => write!(f, "ping"),
             Commands::Status => write!(f, "status"),
+            Commands::ContainerInit { cid } => {
+                write!(f, "container-init {cid}")
+            }
             Commands::Stop { name } => {
                 write!(f, "stop {name}")
             }
@@ -109,6 +115,13 @@ impl TryFrom<&str> for Commands {
 
             "DAEMON" => Ok(Commands::Daemon),
             "PS" => Ok(Commands::PS),
+            "CONTAINER-INIT" => {
+                let cid = parts.next().ok_or("Missing container id")?;
+
+                Ok(Commands::ContainerInit {
+                    cid: cid.to_string(),
+                })
+            }
 
             _ => Err(format!("Unknown command: {command}")),
         }
