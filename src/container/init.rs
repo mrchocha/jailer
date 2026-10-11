@@ -45,7 +45,7 @@ impl ContainerInit {
         let shell = CString::new("/usr/bin/bash")?;
         let arg0 = CString::new("bash")?;
         let option = CString::new("-c")?;
-        let command = CString::new("pwd && ls && cd .. && ls")?;
+        let command = CString::new("ping -c 4 10.10.0.1")?;
 
         let path = CString::new("PATH=/usr/bin:/bin:/usr/sbin:/sbin")?;
         let home = CString::new("HOME=/root")?;
