@@ -89,4 +89,12 @@ ip route get 1.1.1.1
 
 sudo iptables -t nat -A POSTROUTING \
   -s 10.10.0.0/24 -o enp0s1 -j MASQUERADE
+
+
+sudo iptables -A FORWARD \
+  -i jailer0 -o enp0s1 -s 10.10.0.0/24 -j ACCEPT
+
+sudo iptables -A FORWARD \
+  -i enp0s1 -o jailer0 -d 10.10.0.0/24 \
+  -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 ```
