@@ -1,6 +1,5 @@
 use cgroups_rs::fs::Cgroup;
 use cgroups_rs::fs::cgroup_builder::CgroupBuilder;
-use cgroups_rs::*;
 use nix::mount::{MntFlags, MsFlags, mount, umount2};
 use nix::sched::CloneFlags;
 use nix::sched::clone;
@@ -10,7 +9,8 @@ use nix::unistd::chdir;
 use nix::unistd::execv;
 use std::ffi::CString;
 use std::fmt;
-use std::path::PathBuf;
+
+use crate::container::cgroup::ContainerProcessCgroups;
 
 pub enum ConntainerProcessStatus {
     Running,
@@ -30,39 +30,10 @@ impl fmt::Display for ConntainerProcessStatus {
 
 pub struct ConntainerProcess {
     pub pid: Pid,
-    pub name: String,
+    pub cg: ContainerProcessCgroups,
 }
 
 impl ConntainerProcess {
-    fn millicores_to_quota(&self, millicores: u64, period_us: u64) -> u64 {
-        // Equation: (millicores / 1000) * period
-        (millicores * period_us) / 1000
-    }
-
-    fn apply_resource_limits(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let hier = cgroups_rs::fs::hierarchies::auto();
-
-        let max_memory_bytes: i64 = 512 * 1024 * 1024;
-        let requested_millicores = 750;
-        let cfs_period_us = 100_000;
-        let cfs_quota_us = self.millicores_to_quota(requested_millicores, cfs_period_us);
-
-        let cg: Cgroup = CgroupBuilder::new(self.name.as_str())
-            .cpu()
-            .period(cfs_period_us)
-            .quota(cfs_quota_us as i64)
-            .done()
-            .memory()
-            .memory_hard_limit(max_memory_bytes)
-            .done()
-            .build(hier)?;
-
-        let chuld_pid = self.pid.as_raw() as u64;
-
-        cg.add_task(CgroupPid::from(chuld_pid))?;
-        Ok(())
-    }
-
     fn setup_rootfs(rootfs: &str) -> Result<(), Box<dyn std::error::Error>> {
         let root = CString::new(rootfs)?;
 
@@ -119,7 +90,7 @@ impl ConntainerProcess {
         Ok(())
     }
 
-    pub fn new(container_id: String) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(name: String) -> Result<Self, Box<dyn std::error::Error>> {
         // clone() needs a stack for the child.
         let mut stack = vec![0u8; 1024 * 1024];
 
@@ -128,7 +99,7 @@ impl ConntainerProcess {
             | CloneFlags::CLONE_NEWNS
             | CloneFlags::CLONE_NEWUTS;
 
-        let child_name = container_id.clone();
+        let child_name = name.clone();
 
         let child = unsafe {
             clone(
@@ -139,7 +110,7 @@ impl ConntainerProcess {
                     let shell = CString::new("/bin/bash").unwrap();
                     let arg0 = CString::new("bash").unwrap();
                     let option = CString::new("-c").unwrap();
-                    let command = CString::new("ip link set lo up && ip addr show lo").unwrap();
+                    let command = CString::new("sleep 60").unwrap();
                     let args = [arg0, option, command];
 
                     match execv(&shell, &args) {
@@ -160,12 +131,15 @@ impl ConntainerProcess {
         println!("Parent PID: {}", nix::unistd::getpid());
         println!("Container child PID: {child}");
 
-        let child_process = Self {
-            pid: child,
-            name: container_id,
-        };
+        let cg = ContainerProcessCgroups::new(child)?;
+        let child_process = Self { pid: child, cg };
 
-        child_process.apply_resource_limits()?;
         Ok(child_process)
+    }
+
+    pub fn cleanup(&self) -> Result<(), Box<dyn std::error::Error>> {
+        self.cg.cleanup_cgroup()?;
+
+        Ok(())
     }
 }

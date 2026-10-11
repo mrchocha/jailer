@@ -73,14 +73,14 @@ impl Daemon {
 
                 ("container created\n".to_string(), false)
             }
-            Commands::Stop { container_id } => {
-                if self.container_manager.stop(container_id.clone()).is_err() {
+            Commands::Stop { name } => {
+                if self.container_manager.stop(name.clone()).is_err() {
                     return ("container stoping error\n".to_string(), false);
                 }
                 ("container stopping\n".to_string(), false)
             }
-            Commands::Pause { container_id } => {
-                if self.container_manager.pause(container_id.clone()).is_err() {
+            Commands::Pause { name } => {
+                if self.container_manager.pause(name.clone()).is_err() {
                     return ("container pausing error\n".to_string(), false);
                 }
                 ("container paused\n".to_string(), false)

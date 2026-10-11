@@ -33,19 +33,19 @@ pub fn ps() -> io::Result<()> {
     Ok(())
 }
 
-pub fn stop(container_id: &str) -> io::Result<()> {
+pub fn stop(name: &str) -> io::Result<()> {
     let ipc = IpcClient::new(IPC_SOCK_PATH);
     let resp = ipc.send_request(&Commands::Stop {
-        container_id: container_id.to_owned(),
+        name: name.to_owned(),
     })?;
     println!("{}", resp);
     Ok(())
 }
 
-pub fn pause(container_id: &str) -> io::Result<()> {
+pub fn pause(name: &str) -> io::Result<()> {
     let ipc = IpcClient::new(IPC_SOCK_PATH);
     let resp = ipc.send_request(&Commands::Pause {
-        container_id: container_id.to_owned(),
+        name: name.to_owned(),
     })?;
     println!("{}", resp);
     Ok(())
